@@ -58,6 +58,46 @@ socket.on("remove-user", ({ socketId }) => {
     }
 });
 
+socket.on("call-made", async (data) => {
+    const confirmed = confirm(
+        `کاربر   ${data.socket} می خواهد با شما تماس بگیرد . ایا قبول می کنید؟`
+    );
+
+    if (!confirmed) {
+        socket.emit("reject-call", {
+            from: data.socket,
+        });
+
+        return;
+    }
+
+    await peerConnection.setRemoteDescription(
+        new RTCSessionDescription(data.offer)
+    );
+
+    const answer = await peerConnection.createAnswer();
+
+    await peerConnection.setLocalDescription(new RTCSessionDescription(answer));
+
+    socket.emit("make-answer", {
+        answer,
+        to: data.socket,
+    });
+});
+
+socket.on("answer-made", async (data) => {
+    await peerConnection.setRemoteDescription(
+        new RTCSessionDescription(data.answer)
+    );
+
+    callUser(data.socket);
+});
+
+socket.on("call-rejected", (data) => {
+    alert(`کاربر   ${data.socket} تماس شما را قبول نکرد!`);
+    //Unselect active user
+});
+
 navigator.getUserMedia(
     { video: true, audio: true },
     (stream) => {

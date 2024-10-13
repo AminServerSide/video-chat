@@ -37,6 +37,19 @@ io.on("connection", (socket) => {
         });
     });
 
+    socket.on("make-answer", (data) => {
+        socket.to(data.to).emit("answer-made", {
+            socket: socket.id,
+            answer: data.answer,
+        });
+    });
+
+    socket.on("reject-call", (data) => {
+        socket.to(data.from).emit("call-rejected", {
+            socket: socket.id,
+        });
+    });
+
     socket.on("disconnect", () => {
         activeUsers = activeUsers.filter(
             (socketExist) => socketExist !== socket.id
