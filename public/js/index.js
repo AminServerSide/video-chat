@@ -1,5 +1,8 @@
 const socket = io("localhost:3000");
 
+let isAlreadyCalling = false;
+let getCalled = false;
+
 const { RTCPeerConnection, RTCSessionDescription } = window;
 
 const peerConnection = new RTCPeerConnection();
@@ -14,7 +17,43 @@ async function callUser(socketId) {
     });
 }
 
-socket.on("update-user-list", ({ users }) => {
+function unselectUser() {
+    const alreadySelectedUser = document.querySelectorAll(
+        ".active-user.active-user--selected"
+    );
+
+    alreadySelectedUser.forEach((element) => {
+        element.setAttribute("class", "active-user");
+    });
+}
+
+function createUserItems(socketId) {
+    const userContainer = document.createElement("div");
+
+    const username = document.createElement("p");
+
+    userContainer.setAttribute("class", "active-user");
+    userContainer.setAttribute("id", socketId);
+    username.setAttribute("class", "username");
+    username.innerHTML = `کاربر : ${socketId}`;
+
+    userContainer.appendChild(username);
+
+    userContainer.addEventListener("click", () => {
+        unselectUser();
+        userContainer.setAttribute(
+            "class",
+            "active-user active-user--selected"
+        );
+        const talkingWithInfo = document.getElementById("talking-with-info");
+        talkingWithInfo.innerHTML = `صحبت با :  ${socketId}`;
+        callUser(socketId);
+    });
+
+    return userContainer;
+}
+
+function updateUserList(users) {
     const activeUserContainer = document.getElementById(
         "active-user-container"
     );
@@ -23,31 +62,15 @@ socket.on("update-user-list", ({ users }) => {
         const userExist = document.getElementById(socketId);
 
         if (!userExist) {
-            const userContainer = document.createElement("div");
-
-            const username = document.createElement("p");
-
-            userContainer.setAttribute("class", "active-user");
-            userContainer.setAttribute("id", socketId);
-            username.setAttribute("class", "username");
-            username.innerHTML = `کاربر : ${socketId}`;
-
-            userContainer.appendChild(username);
-
-            userContainer.addEventListener("click", () => {
-                userContainer.setAttribute(
-                    "class",
-                    "active-user active-user--selected"
-                );
-                const talkingWithInfo =
-                    document.getElementById("talking-with-info");
-                talkingWithInfo.innerHTML = `صحبت با :  ${socketId}`;
-                callUser(socketId);
-            });
+            const userContainer = createUserItems(socketId);
 
             activeUserContainer.appendChild(userContainer);
         }
     });
+}
+
+socket.on("update-user-list", ({ users }) => {
+    updateUserList(users);
 });
 
 socket.on("remove-user", ({ socketId }) => {
@@ -59,16 +82,18 @@ socket.on("remove-user", ({ socketId }) => {
 });
 
 socket.on("call-made", async (data) => {
-    const confirmed = confirm(
-        `کاربر   ${data.socket} می خواهد با شما تماس بگیرد . ایا قبول می کنید؟`
-    );
+    if (getCalled) {
+        const confirmed = confirm(
+            `کاربر   ${data.socket} می خواهد با شما تماس بگیرد . ِآیا قبول می کنید؟`
+        );
 
-    if (!confirmed) {
-        socket.emit("reject-call", {
-            from: data.socket,
-        });
+        if (!confirmed) {
+            socket.emit("reject-call", {
+                from: data.socket,
+            });
 
-        return;
+            return;
+        }
     }
 
     await peerConnection.setRemoteDescription(
@@ -83,6 +108,8 @@ socket.on("call-made", async (data) => {
         answer,
         to: data.socket,
     });
+
+    getCalled = true;
 });
 
 socket.on("answer-made", async (data) => {
@@ -90,13 +117,24 @@ socket.on("answer-made", async (data) => {
         new RTCSessionDescription(data.answer)
     );
 
-    callUser(data.socket);
+    if (!isAlreadyCalling) {
+        callUser(data.socket);
+        isAlreadyCalling = true;
+    }
 });
 
 socket.on("call-rejected", (data) => {
     alert(`کاربر   ${data.socket} تماس شما را قبول نکرد!`);
-    //Unselect active user
+    unselectUser();
 });
+
+peerConnection.ontrack = function ({ streams: [stream] }) {
+    const remoteVideo = document.getElementById("remote-video");
+
+    if (remoteVideo) {
+        remoteVideo.srcObject = stream;
+    }
+};
 
 navigator.getUserMedia(
     { video: true, audio: true },
@@ -106,6 +144,10 @@ navigator.getUserMedia(
         if (localVideo) {
             localVideo.srcObject = stream;
         }
+
+        stream
+            .getTracks()
+            .forEach((track) => peerConnection.addTrack(track, stream));
     },
     (error) => {
         console.log(error.message);
